@@ -55,3 +55,23 @@ Run pithermalcam/web_server.py to set up a flask server and stream live video ov
 Run pithermalcam/pi_therm_cam.py to display the video feed onscreen.
 
 Check sequential_versions folder for sequential running approaches that are easier to track/follow (i.e. sequential running rather than object-oriented classes). These are less robust, but can be easier to understand/track/edit, particularly for those coming from a scientific background. Again, refer to the link at top for a detailed discussion.
+
+## ADDITIONAL INSTRUCTIONS ##
+Follow instructions: https://github.com/pimoroni/breakout-garden
+
+Install this: https://learn.adafruit.com/circuitpython-on-raspberrypi-linux/installing-circuitpython-on-raspberry-pi
+
+Install this: https://learn.adafruit.com/adafruit-mlx90640-ir-thermal-camera/python-circuitpython
+
+Follow instructions here: https://github.com/pimoroni/mlx90640-library
+
+Sudo apt-get install gfortran
+
+Sudo apt-get install libgtk2.0-dev
+
+Sudo apt-get install pkg-config
+
+Read this: https://tomshaffner.github.io/PiThermalCam/#parts-required
+
+pip install opencv-contrib-python
+
