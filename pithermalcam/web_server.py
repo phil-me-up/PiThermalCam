@@ -5,7 +5,7 @@
 # If running directly, run from root folder, not pithermalcam folder
 ##################################
 try:  # If called as an imported module
-	from pithermalcam import pithermalcam
+	from pi_therm_cam import pithermalcam
 except:  # If run directly
 	from pi_therm_cam import pithermalcam
 from flask import Response, request
@@ -39,6 +39,26 @@ def index():
 def save_image():
 	thermcam.save_image()
 	return ("Snapshot Saved")
+
+@app.route('/inc_min_temp')
+def inc_min_temp():
+    thermcam.change_min_temp()
+    return ("Increased Min Temp")
+
+@app.route('/dec_min_temp')
+def dec_min_temp():
+    thermcam.change_min_temp(increase=False)
+    return ("Decreased Min Temp")
+
+@app.route('/inc_max_temp')
+def inc_max_temp():
+    thermcam.change_max_temp()
+    return ("Increased Max Temp")
+
+@app.route('/dec_max_temp')
+def dec_max_temp():
+    thermcam.change_max_temp(increase=False)
+    return ("Decreased Max Temp")
 
 @app.route('/units')
 def change_units():

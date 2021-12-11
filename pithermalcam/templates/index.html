@@ -16,10 +16,58 @@
         });
 </script>
   <script type=text/javascript>
+        $(function() {
+          $('a#colormap').on('click', function(e) {
+            e.preventDefault()
+            $.getJSON('/colormap',
+                function(data) {
+              //do nothing
+            });
+            return false;
+          });
+        });
+</script>
+  <script type=text/javascript>
+        $(function() {
+          $('a#inc_min_temp').on('click', function(e) {
+            e.preventDefault()
+            $.getJSON('/inc_min_temp',
+                function(data) {
+              //do nothing
+            });
+            return false;
+          });
+        });
+</script>
+  <script type=text/javascript>
   $(function() {
-    $('a#units').on('click', function(e) {
+    $('a#dec_min_temp').on('click', function(e) {
       e.preventDefault()
-      $.getJSON('/units',
+      $.getJSON('/dec_min_temp',
+          function(data) {
+        //do nothing
+      });
+      return false;
+    });
+  });
+</script>
+  <script type=text/javascript>
+  $(function() {
+    $('a#inc_max_temp').on('click', function(e) {
+      e.preventDefault()
+      $.getJSON('/inc_max_temp',
+          function(data) {
+        //do nothing
+      });
+      return false;
+    });
+  });
+</script>
+  <script type=text/javascript>
+  $(function() {
+    $('a#dec_max_temp').on('click', function(e) {
+      e.preventDefault()
+      $.getJSON('/dec_max_temp',
           function(data) {
         //do nothing
       });
@@ -141,6 +189,12 @@
   <div class='container'>
     <form class="form-inline">
       <a href=# id=save><button class='btn btn-default'>Save</button></a>
+      <br/>
+      <a href=# id=dec_min_temp><button class='btn btn-default'>Dec Min Temp</button></a>
+      <a href=# id=inc_min_temp><button class='btn btn-default'>Inc Min Temp</button></a>
+      <a href=# id=dec_max_temp><button class='btn btn-default'>Dec Max Temp</button></a>
+      <a href=# id=inc_max_temp><button class='btn btn-default'>Inc Max Temp</button></a>
+      <br/>
       <a href=# id=units><button class='btn btn-default'>Change Temp Units</button></a>
       <a href=# id=colormapback><button class='btn btn-default'>Previous Colormap</button></a>
       <a href=# id=colormap><button class='btn btn-default'>Next Colormap</button></a>

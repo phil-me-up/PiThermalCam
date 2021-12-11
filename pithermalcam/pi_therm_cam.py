@@ -27,6 +27,8 @@ class pithermalcam:
     _current_frame_processed=False  # Tracks if the current processed image matches the current raw image
     i2c=None
     mlx=None
+    clamp_temp_min = 0
+    clamp_temp_max = 100
     _temp_min=None
     _temp_max=None
     _raw_image=None
@@ -35,7 +37,7 @@ class pithermalcam:
     _displaying_onscreen=False
     _exit_requested=False
 
-    def __init__(self,use_f:bool = True, filter_image:bool = False, image_width:int=1200, 
+    def __init__(self,use_f:bool = False, filter_image:bool = False, image_width:int=1200, 
                 image_height:int=900, output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
         self.use_f=use_f
         self.filter_image=filter_image
@@ -63,6 +65,19 @@ class pithermalcam:
     def _c_to_f(self,temp:float):
         """ Convert temperature from C to F """
         return ((9.0/5.0)*temp+32.0)
+    
+    def change_min_temp(self, increase:bool = True):
+        if (increase):
+            self.clamp_temp_min = self.clamp_temp_min + 1
+        else:
+            self.clamp_temp_min = self.clamp_temp_min - 1
+            
+    def change_max_temp(self, increase:bool = True):
+        if (increase):
+            self.clamp_temp_max = self.clamp_temp_max + 1
+        else:
+            self.clamp_temp_max = self.clamp_temp_max - 1
+        
 
     def get_mean_temp(self):
         """
@@ -87,7 +102,11 @@ class pithermalcam:
         try:
             self.mlx.getFrame(self._raw_image)  # read mlx90640
             self._temp_min = np.min(self._raw_image)
+            if(self._temp_min < self.clamp_temp_min):
+                self._temp_min = self.clamp_temp_min
             self._temp_max = np.max(self._raw_image)
+            if(self._temp_max > self.clamp_temp_max):
+                self._temp_max = self.clamp_temp_max
             self._raw_image=self._temps_to_rescaled_uints(self._raw_image,self._temp_min,self._temp_max)
             self._current_frame_processed=False  # Note that the newly updated raw frame has not been processed
         except ValueError:
