@@ -17,12 +17,34 @@ import cv2
 
 import sys
 import time
+import os
+import io
+
+import colorsys
+import ioexpander
 
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
 
 import ST7789
+
+I2C_ADDR = 0x0F  # 0x18 for IO Expander, 0x0F for the encoder breakout
+
+PIN_RED = 1
+PIN_GREEN = 7
+PIN_BLUE = 2
+
+POT_ENC_A = 12
+POT_ENC_B = 3
+POT_ENC_C = 11
+
+BRIGHTNESS = 0.5                # Effectively the maximum fraction of the period that the LED will be on
+PERIOD = int(255 / BRIGHTNESS)  # Add a period large enough to get 0-255 steps at the desired brightness
+
+ioe = None
+rotary_count = 0
+rotary_start_offset = -1
 
 # Set up Logger
 logging.basicConfig(filename='pithermcam.log',filemode='a',
@@ -118,10 +140,52 @@ def video_feed():
 	# type (mime type)
 	return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
-def setup_screen():
-    # just assume square for now..    
-    display_type = "square"
+def setup_rotary_input():
+    global ioe, rotary_count, rotary_start_offset
+    ioe = ioexpander.IOE(i2c_addr=I2C_ADDR, interrupt_pin=4)
+
+    # Swap the interrupt pin for the Rotary Encoder breakout
+    if I2C_ADDR == 0x0F:
+        ioe.enable_interrupt_out(pin_swap=True)
+
+    ioe.setup_rotary_encoder(1, POT_ENC_A, POT_ENC_B, pin_c=POT_ENC_C)
+
+    ioe.set_pwm_period(PERIOD)
+    ioe.set_pwm_control(divider=2)  # PWM as fast as we can to avoid LED flicker
+
+    ioe.set_mode(PIN_RED, ioexpander.PWM, invert=True)
+    ioe.set_mode(PIN_GREEN, ioexpander.PWM, invert=True)
+    ioe.set_mode(PIN_BLUE, ioexpander.PWM, invert=True)
+
+    print("Running LED with {} brightness steps.".format(int(PERIOD * BRIGHTNESS)))
+
+    rotaty_count = 0
+    rotary_start_offset = ioe.read_rotary_encoder(1)
     
+def update_rotary_input():
+    global ioe, rotary_count, rotary_start_offset
+    
+    if ioe.get_interrupt():
+        rotary_count = ioe.read_rotary_encoder(1)
+        rotary_count = rotary_count - rotary_start_offset
+        ioe.clear_interrupt()
+
+    h = (rotary_count % 360) / 360.0
+    
+    rotary_r, rotary_g, rotary_b = [int(c * PERIOD * BRIGHTNESS) for c in colorsys.hsv_to_rgb(h, 1.0, 1.0)]
+    ioe.output(PIN_RED, rotary_r)
+    ioe.output(PIN_GREEN, rotary_g)
+    ioe.output(PIN_BLUE, rotary_b)
+
+    # print(rotary_count, rotary_r, rotary_g, rotary_b)
+
+    # time.sleep(1.0 / 30)
+    
+def setup_screen():
+    global disp
+    # just assume square for now..
+    display_type = "square"
+
     # Create ST7789 LCD display class.
     if display_type in ("square", "rect", "round"):
         disp = ST7789.ST7789(
@@ -155,26 +219,69 @@ def setup_screen():
 
     if disp == None:
         return
-    
+
     # Initialize display.
     disp.begin()
-    
+
+def update_screen(current_frame=None):
+    global disp, thermcam, rotary_count
     img = Image.new('RGB', (disp.width, disp.height), color=(0, 0, 0))
+
+    #if thermcam is not None:
+    #    img = Image.fromarray(thermcam.get_raw_image(disp.width, disp.height))
 
     draw = ImageDraw.Draw(img)
 
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-
-    display_msg = "Thermal Cam\nWeb server\n\n" + get_ip_address() + ":8000"
-    size_x, size_y = draw.textsize(display_msg, font)
-
-    text_x = disp.width
-    text_y = (disp.height - size_y) // 2
     
-    draw.rectangle((0, 0, disp.width, disp.height), (0, 0, 0))
-    draw.text((0, 0), display_msg, font=font, fill=(255, 255, 255))
-    disp.display(img)
+    print(rotary_count)
+    if rotary_count == 0:
+        # Get the network ID
+        ssid=os.popen("sudo iwgetid -r").read()
+
+        # print out
+        display_msg = "Thermal Cam\nWeb server\n\nSSID: " + ssid + "\n" + get_ip_address() + ":8000"
+        size_x, size_y = draw.textsize(display_msg, font)
+
+        text_x = disp.width
+        text_y = (disp.height - size_y) // 2
+
+        draw.rectangle((0, 0, disp.width, disp.height), (0, 0, 0))
+        draw.text((0, 0), display_msg, font=font, fill=(255, 255, 255))
+        disp.display(img)
     
+    #image = Image.open(bytearray(lastImg))
+    if rotary_count == 1:
+        error_msg = None
+        if current_frame is not None:
+            try:
+                (flag, encodedImage) = cv2.imencode(".jpg", current_frame)
+                if flag:
+                    image = Image.open(io.BytesIO(bytearray(encodedImage)))
+
+                    # Resize the image
+                    image = image.resize((disp.width, disp.height))
+
+                    # Draw the image on the display hardware.
+                    # print('Drawing image')
+
+                    disp.display(image)
+            except:
+                error_msg = "Failed to Draw Image"
+        else:
+            error_msg = "Can't Get Current Frame"
+        
+        if error_msg is not None:
+            size_x, size_y = draw.textsize(error_msg, font)
+
+            text_x = disp.width
+            text_y = (disp.height - size_y) // 2
+
+            draw.rectangle((0, 0, disp.width, disp.height), (0, 0, 0))
+            draw.text((0, 0), error_msg, font=font, fill=(255, 255, 255))
+            disp.display(img)
+
+
 def get_ip_address():
 	"""Find the current IP address of the device"""
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -184,38 +291,44 @@ def get_ip_address():
 	return ip_address
 
 def pull_images():
-	global thermcam, outputFrame
-	# loop over frames from the video stream
-	while thermcam is not None:
-		current_frame=None
-		try:
-			current_frame = thermcam.update_image_frame()
-		except Exception:
-			print("Too many retries error caught; continuing...")
-			logger.info(traceback.format_exc())
+    global thermcam, outputFrame
+    # loop over frames from the video stream
+    while thermcam is not None:
+        current_frame=None
+        try:
+            current_frame = thermcam.update_image_frame()
+        except Exception:
+            print("Too many retries error caught; continuing...")
+            logger.info(traceback.format_exc())
 
-		# If we have a frame, acquire the lock, set the output frame, and release the lock
-		if current_frame is not None:
-			with lock:
-				outputFrame = current_frame.copy()
+        # If we have a frame, acquire the lock, set the output frame, and release the lock
+        if current_frame is not None:
+            with lock:
+                outputFrame = current_frame.copy()
+
+        update_rotary_input()
+        update_screen(current_frame)
 
 def generate():
 	# grab global references to the output frame and lock variables
-	global outputFrame, lock
-	# loop over frames from the output stream
-	while True:
-		# wait until the lock is acquired
-		with lock:
-			# check if the output frame is available, otherwise skip the iteration of the loop
-			if outputFrame is None:
-				continue
-			# encode the frame in JPEG format
-			(flag, encodedImage) = cv2.imencode(".jpg", outputFrame)
-			# ensure the frame was successfully encoded
-			if not flag:
-				continue
-		# yield the output frame in the byte format
-		yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + bytearray(encodedImage) + b'\r\n')
+    global outputFrame, lock
+
+    # loop over frames from the output stream
+    while True:
+        # wait until the lock is acquired
+        with lock:
+            # check if the output frame is available, otherwise skip the iteration of the loop
+            if outputFrame is None:
+                continue
+            # encode the frame in JPEG format
+            (flag, encodedImage) = cv2.imencode(".jpg", outputFrame)
+            # ensure the frame was successfully encoded
+            if not flag:
+                continue
+
+        # yield the output frame in the byte format
+        yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + bytearray(encodedImage) + b'\r\n')
+
 
 def start_server(output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
 	global thermcam
@@ -239,6 +352,9 @@ def start_server(output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
 
 # If this is the main thread, simply start the server
 if __name__ == '__main__':
+    setup_rotary_input()
     setup_screen()
+    #update_screen()
     start_server()
+
 	

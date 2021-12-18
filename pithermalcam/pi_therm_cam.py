@@ -37,7 +37,7 @@ class pithermalcam:
     _displaying_onscreen=False
     _exit_requested=False
 
-    def __init__(self,use_f:bool = False, filter_image:bool = False, image_width:int=1200, 
+    def __init__(self,use_f:bool = False, filter_image:bool = False, image_width:int=1200,
                 image_height:int=900, output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
         self.use_f=use_f
         self.filter_image=filter_image
@@ -65,19 +65,19 @@ class pithermalcam:
     def _c_to_f(self,temp:float):
         """ Convert temperature from C to F """
         return ((9.0/5.0)*temp+32.0)
-    
+
     def change_min_temp(self, increase:bool = True):
         if (increase):
             self.clamp_temp_min = self.clamp_temp_min + 1
         else:
             self.clamp_temp_min = self.clamp_temp_min - 1
-            
+
     def change_max_temp(self, increase:bool = True):
         if (increase):
             self.clamp_temp_max = self.clamp_temp_max + 1
         else:
             self.clamp_temp_max = self.clamp_temp_max - 1
-        
+
 
     def get_mean_temp(self):
         """
@@ -135,6 +135,11 @@ class pithermalcam:
         self._image = cv2.flip(self._image, 1)
         if self.filter_image:
             self._image=cv2.bilateralFilter(self._image,15,80,80)
+
+    def get_raw_image(self, size_x=180, size_y=180):
+        if self._image is not None:
+            return self._image
+            #return cv2.resize(self._image, (size_x, size_y), interpolation=self._interpolation_list[self._interpolation_index])
 
     def _add_image_text(self):
         """Set image text content"""
