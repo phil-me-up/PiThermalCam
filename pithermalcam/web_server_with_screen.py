@@ -23,6 +23,8 @@ import io
 import colorsys
 import ioexpander
 
+from trackball import TrackBall
+
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
@@ -42,9 +44,20 @@ POT_ENC_C = 11
 BRIGHTNESS = 0.5                # Effectively the maximum fraction of the period that the LED will be on
 PERIOD = int(255 / BRIGHTNESS)  # Add a period large enough to get 0-255 steps at the desired brightness
 
+# Setup Rotary Input
 ioe = None
 rotary_count = 0
 rotary_start_offset = -1
+
+# Set up Trackball Breakout.
+use_trackball = True
+trackball = TrackBall(interrupt_pin=4)
+trackball_delta_x = 0
+trackball_delta_y = 0
+trackball_state_x = 0
+trackball_state_y = 0
+trackball_clicks = 0
+trackball_msg = None
 
 # Set up Logger
 logging.basicConfig(filename='pithermcam.log',filemode='a',
@@ -161,17 +174,40 @@ def setup_rotary_input():
 
     rotaty_count = 0
     rotary_start_offset = ioe.read_rotary_encoder(1)
-    
+
+
+def setup_trackball_input():
+    global use_trackball, trackball, trackball_delta_x, trackball_delta_y, trackball_state_x, trackball_state_y, trackball_clicks, trackball_msg
+
+    if use_trackball is False:
+        return
+
+    trackball.set_rgbw(255, 0, 0, 0)
+    up, down, left, right, switch, state = trackball.read()
+
+    trackball_delta_x += right
+    trackball_delta_x -= left
+    trackball_delta_y += up
+    trackball_delta_y -= down
+
+    trackball_state_x = 0
+    trackball_state_y = 0
+
+    trackball_clicks = 0
+    trackball_msg = None
+
+
 def update_rotary_input():
     global ioe, rotary_count, rotary_start_offset
-    
+
     if ioe.get_interrupt():
         rotary_count = ioe.read_rotary_encoder(1)
         rotary_count = rotary_count - rotary_start_offset
+        setup_trackball_input()  # Call this just to reset all the trackball input when screens change
         ioe.clear_interrupt()
 
     h = (rotary_count % 360) / 360.0
-    
+
     rotary_r, rotary_g, rotary_b = [int(c * PERIOD * BRIGHTNESS) for c in colorsys.hsv_to_rgb(h, 1.0, 1.0)]
     ioe.output(PIN_RED, rotary_r)
     ioe.output(PIN_GREEN, rotary_g)
@@ -180,7 +216,55 @@ def update_rotary_input():
     # print(rotary_count, rotary_r, rotary_g, rotary_b)
 
     # time.sleep(1.0 / 30)
-    
+
+def update_trackball():
+    global use_trackball, trackball, trackball_delta_x, trackball_delta_y, trackball_clicks, trackball_state_x, trackball_state_y, trackball_msg
+
+    if use_trackball is False:
+        return
+
+    up, down, left, right, switch, state = trackball.read()
+
+    print("r: {:02d} u: {:02d} d: {:02d} l: {:02d} switch: {:03d} state: {}".format(right, up, down, left, switch, state))
+
+    x = right
+    y = up
+
+    if down > 1:
+        trackball_state_y += 1
+        trackball_state_x = 0
+    elif up > 1:
+        trackball_state_y -= 1
+        trackball_state_x = 0
+    elif right > 1:
+        trackball_state_x += 1
+    elif left > 1:
+        trackball_state_x -= 1
+
+    if state:
+        trackball_clicks += 1
+        trackball_state_x = 0
+        trackball_state_y = 0
+
+    print('Trackball X:' + str(x) + ' Y:' + str(y) + ' State X:' + str(trackball_state_x) + ' Y:' + str(trackball_state_y))
+
+    if trackball_state_y == 1:
+        if trackball_state_x > 1:
+            increment_colormap()
+            trackball_msg = "Colour Map Inc"
+            trackball_state_x = 0
+        elif trackball_state_x < -1:
+            decrement_colormap()
+            trackball_msg = "Colour Map Dec"
+            trackball_state_x = 0
+        trackball_delta_x = 0
+
+def update_input():
+    while True:
+        update_rotary_input()
+        update_trackball()
+        #time.sleep(0.005)
+
 def setup_screen():
     global disp
     # just assume square for now..
@@ -223,6 +307,18 @@ def setup_screen():
     # Initialize display.
     disp.begin()
 
+def add_trackball_msg(draw=None):
+    global disp, trackball_msg
+
+    if trackball_msg is not None and draw is not None and disp is not None:
+        print("blah")
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
+        half_rec_height = 20
+        rec_loc = (disp.height / 2)
+        draw.rectangle((0, (rec_loc - half_rec_height), disp.width, (rec_loc + half_rec_height)), (45, 45, 45))
+        draw.text((0, rec_loc), trackball_msg, font=font, fill=(255, 255, 255))
+
+
 def update_screen(current_frame=None):
     global disp, thermcam, rotary_count
     img = Image.new('RGB', (disp.width, disp.height), color=(0, 0, 0))
@@ -233,7 +329,7 @@ def update_screen(current_frame=None):
     draw = ImageDraw.Draw(img)
 
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-    
+
     print(rotary_count)
     if rotary_count == 0:
         # Get the network ID
@@ -248,8 +344,10 @@ def update_screen(current_frame=None):
 
         draw.rectangle((0, 0, disp.width, disp.height), (0, 0, 0))
         draw.text((0, 0), display_msg, font=font, fill=(255, 255, 255))
+
+        add_trackball_msg(draw)
         disp.display(img)
-    
+
     #image = Image.open(bytearray(lastImg))
     if rotary_count == 1:
         error_msg = None
@@ -265,12 +363,14 @@ def update_screen(current_frame=None):
                     # Draw the image on the display hardware.
                     # print('Drawing image')
 
+                    add_trackball_msg(draw)
+
                     disp.display(image)
             except:
                 error_msg = "Failed to Draw Image"
         else:
             error_msg = "Can't Get Current Frame"
-        
+
         if error_msg is not None:
             size_x, size_y = draw.textsize(error_msg, font)
 
@@ -306,7 +406,8 @@ def pull_images():
             with lock:
                 outputFrame = current_frame.copy()
 
-        update_rotary_input()
+        #update_rotary_input()
+        #update_trackball()
         update_screen(current_frame)
 
 def generate():
@@ -341,6 +442,10 @@ def start_server(output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
 	t.daemon = True
 	t.start()
 
+	t2 = threading.Thread(target=update_input)
+	t2.daemon = True
+	t2.start()
+
 	ip=get_ip_address()
 	port=8000
 
@@ -353,6 +458,7 @@ def start_server(output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
 # If this is the main thread, simply start the server
 if __name__ == '__main__':
     setup_rotary_input()
+    setup_trackball_input()
     setup_screen()
     #update_screen()
     start_server()
