@@ -75,6 +75,7 @@ disp = None
 
 # initialize a flask object
 app = Flask(__name__)
+app_started = False
 
 @app.route("/")
 def index():
@@ -383,12 +384,16 @@ def update_screen(current_frame=None):
 
 
 def get_ip_address():
-	"""Find the current IP address of the device"""
-	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-	s.connect(("8.8.8.8", 80))
-	ip_address=s.getsockname()[0]
-	s.close()
-	return ip_address
+    try:
+        """Find the current IP address of the device"""
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip_address=s.getsockname()[0]
+        s.close()
+        return ip_address
+    except Exception:
+        return "IP Error"
+        
 
 def pull_images():
     global thermcam, outputFrame
@@ -445,15 +450,22 @@ def start_server(output_folder:str = '/home/pi/pithermalcam/saved_snapshots/'):
 	t2 = threading.Thread(target=update_input)
 	t2.daemon = True
 	t2.start()
+	
+	try_start_server()
 
-	ip=get_ip_address()
-	port=8000
-
-	print(f'Server can be found at {ip}:{port}')
-
-	# start the flask app
-	app.run(host=ip, port=port, debug=False,threaded=True, use_reloader=False)
-
+def try_start_server():
+    global app_started
+    
+    while app_started is False:
+        try:
+            ip=get_ip_address()
+            port=8000
+            print(f'Server can be found at {ip}:{port}')
+            # start the flask app
+            app.run(host=ip, port=port, debug=False,threaded=True, use_reloader=False)
+            app_started = True
+        except Exception:
+            time.sleep(5.0)
 
 # If this is the main thread, simply start the server
 if __name__ == '__main__':
