@@ -11,6 +11,7 @@ except:  # If run directly
 from flask import Response, request
 from flask import Flask
 from flask import render_template
+from datetime import datetime
 import threading
 import time, socket, logging, traceback
 import cv2
@@ -58,6 +59,7 @@ trackball_state_x = 0
 trackball_state_y = 0
 trackball_clicks = 0
 trackball_msg = None
+
 
 # Set up Logger
 logging.basicConfig(filename='pithermcam.log',filemode='a',
@@ -220,13 +222,14 @@ def update_rotary_input():
 
 def update_trackball():
     global use_trackball, trackball, trackball_delta_x, trackball_delta_y, trackball_clicks, trackball_state_x, trackball_state_y, trackball_msg
+    global rotary_count
 
     if use_trackball is False:
         return
 
     up, down, left, right, switch, state = trackball.read()
 
-    print("r: {:02d} u: {:02d} d: {:02d} l: {:02d} switch: {:03d} state: {}".format(right, up, down, left, switch, state))
+    # print("r: {:02d} u: {:02d} d: {:02d} l: {:02d} switch: {:03d} state: {}".format(right, up, down, left, switch, state))
 
     x = right
     y = up
@@ -246,8 +249,12 @@ def update_trackball():
         trackball_clicks += 1
         trackball_state_x = 0
         trackball_state_y = 0
+        if rotary_count == 2:
+            print("Quit requested")
+            os._exit(1) 
+            
 
-    print('Trackball X:' + str(x) + ' Y:' + str(y) + ' State X:' + str(trackball_state_x) + ' Y:' + str(trackball_state_y))
+    # print('Trackball X:' + str(x) + ' Y:' + str(y) + ' State X:' + str(trackball_state_x) + ' Y:' + str(trackball_state_y))
 
     if trackball_state_y == 1:
         if trackball_state_x > 1:
@@ -331,7 +338,7 @@ def update_screen(current_frame=None):
 
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
 
-    print(rotary_count)
+    # print(rotary_count)
     if rotary_count == 0:
         # Get the network ID
         ssid=os.popen("sudo iwgetid -r").read()
@@ -381,6 +388,20 @@ def update_screen(current_frame=None):
             draw.rectangle((0, 0, disp.width, disp.height), (0, 0, 0))
             draw.text((0, 0), error_msg, font=font, fill=(255, 255, 255))
             disp.display(img)
+    
+    if rotary_count == 2:
+        # print out
+        display_msg = "Press trackball\nto kill process\n\n" + datetime.utcnow().strftime('%Y%m%d\n%H%M%S')
+        size_x, size_y = draw.textsize(display_msg, font)
+
+        text_x = disp.width
+        text_y = (disp.height - size_y) // 2
+
+        draw.rectangle((0, 0, disp.width, disp.height), (0, 0, 0))
+        draw.text((0, 0), display_msg, font=font, fill=(255, 255, 255))
+
+        add_trackball_msg(draw)
+        disp.display(img)
 
 
 def get_ip_address():
@@ -459,11 +480,14 @@ def try_start_server():
     while app_started is False:
         try:
             ip=get_ip_address()
-            port=8000
-            print(f'Server can be found at {ip}:{port}')
-            # start the flask app
-            app.run(host=ip, port=port, debug=False,threaded=True, use_reloader=False)
-            app_started = True
+            if "." in ip:
+                port=8000
+                print(f'Server can be found at {ip}:{port}')
+                # start the flask app
+                app.run(host=ip, port=port, debug=False,threaded=True, use_reloader=False)
+                app_started = True
+            else:
+                time.sleep(2.0)
         except Exception:
             time.sleep(5.0)
 
